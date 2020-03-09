@@ -7,7 +7,6 @@ class StateEstimator:
 
     def __init__(self, sigma=0.1, mu=0.0):
         # State
-        # TODO: change angles in degrees -> angles in radians
         self.state = np.array([[0., 0.1, np.deg2rad(30), np.deg2rad(2)]]).T
         print(self.state.shape)
         self.state_prior = np.zeros_like(self.state)
@@ -15,10 +14,11 @@ class StateEstimator:
         self.meas =  np.zeros_like(self.state)
         self.cov_prior = np.eye(4)
         self.cov = np.eye(4) # covariance of true belief
-        self.Q = np.diag([0.1, 0.3, 1e-6, 1e-6]) # covariance of measurement noise (Q)
-        # self.Q_decomp = np.linalg.cholesky(self.Q) # Q = AA.T --> Cholesky decomposition of covariance Q to generate zero-mean WGN
-        self.R = sigma * np.random.randn(4, 4) + mu # covariance of process noise (R)
-        # self.R = np.zeros((4, 4))
+        # self.Q = np.diag([0.1, 0.3, 1e-6, 1e-6]) # covariance of measurement noise (Q)
+        self.Q = np.diag([0.1, 0.3]) # covariance of measurement noise (Q)
+        self.Q_decomp = np.linalg.cholesky(self.Q) # Q = AA.T --> Cholesky decomposition of covariance Q to generate zero-mean WGN
+        # self.R = sigma * np.random.randn(4, 4) + mu # covariance of process noise (R)
+        self.R = np.zeros((4, 4))
 
         # Params
         self.delta_t = 0.1
@@ -38,17 +38,28 @@ class StateEstimator:
         self.u[1] = 0.01
 
     # Read measurement / evaluate measurement model
+    # def measurement_model(self, state):
+    #     meas = np.zeros((4, 1))
+    #     R = np.sqrt(state[0]*state[0] + state[1]*state[1])
+    #     meas[0, 0] = R*np.cos(state[2])
+    #     meas[1, 0] = R*np.sin(state[2])
+    #     meas[2, 0] = state[2]
+    #     meas[3, 0] = state[3]
+    #     # Add zero-mean WGN
+    #     # U = np.array([np.random.normal(0, np.sqrt(np.diag(self.Q_decomp)))]).T
+    #     # return meas + U
+    #     return meas
+    
     def measurement_model(self, state):
-        meas = np.zeros((4, 1))
-        R = np.sqrt(state[0]*state[0] + state[1]*state[1])
-        meas[0, 0] = R*np.cos(state[2])
-        meas[1, 0] = R*np.sin(state[2])
-        meas[2, 0] = state[2]
-        meas[3, 0] = state[3]
+        meas = np.zeros((2, 1))
+        meas[0, 0] = np.sqrt(state[0]*state[0] + state[1]*state[1])
+        meas[1, 0] = state[2]
         # Add zero-mean WGN
         # U = np.array([np.random.normal(0, np.sqrt(np.diag(self.Q_decomp)))]).T
-        # return meas + U
-        return meas
+        U = np.array([np.random.normal(0, np.sqrt(np.diag(self.Q)))]).T
+        print(U.shape)
+        return meas + U
+        # return meas
 
     def linearize_motion(self):
         # Jacobian of G was determined analytically
@@ -58,14 +69,23 @@ class StateEstimator:
         G[2, 3] = self.delta_t*self.u[0]/(self.l * np.cos(self.state_prior[2])*np.cos(self.state_prior[2]))
         return G
   
+    # def linearize_meas(self):
+    #     # Jacobian of H was determined analytically
+    #     H = np.zeros((4, 4))
+    #     R = np.sqrt(self.state[0]*self.state[0] + self.state[1]*self.state[1])
+    #     H[0, 2] = -R*np.sin(self.state[2])
+    #     H[1, 2] = R*np.cos(self.state[2])
+    #     H[2, 2] = 1
+    #     H[3, 3] = 1
+    #     return H
+
     def linearize_meas(self):
         # Jacobian of H was determined analytically
-        H = np.zeros((4, 4))
+        H = np.zeros((2, 4))
         R = np.sqrt(self.state[0]*self.state[0] + self.state[1]*self.state[1])
-        H[0, 2] = -R*np.sin(self.state[2])
-        H[1, 2] = R*np.cos(self.state[2])
-        H[2, 2] = 1
-        H[3, 3] = 1
+        H[0, 0] = self.state[0] / R
+        H[0, 1] = self.state[1] / R
+        H[1, 2] = 1
         return H
 
     # Run pose estimation
